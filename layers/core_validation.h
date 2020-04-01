@@ -20,6 +20,7 @@
  * Author: Chris Forbes <chrisf@ijw.co.nz>
  * Author: Mark Lobodzinski <mark@lunarg.com>
  * Author: Dave Houlton <daveh@lunarg.com>
+ * Author: Jeremy Kniager <jeremyk@lunarg.com>
  */
 
 #pragma once
@@ -40,6 +41,13 @@ struct DrawDispatchVuid {
     const char* render_pass_compatible;
     const char* subpass_index;
     const char* sample_location;
+    const char* linear_sampler;
+    const char* cubic_sampler;
+};
+
+struct DescriptorSetBindingDataCheckResults {
+    bool linear_sampler = false;
+    bool cubic_sampler = false;
 };
 
 class CoreChecks : public ValidationStateTracker {
@@ -324,10 +332,11 @@ class CoreChecks : public ValidationStateTracker {
     // For given bindings validate state at time of draw is correct, returning false on error and writing error details into string*
     bool ValidateDrawState(const cvdescriptorset::DescriptorSet* descriptor_set, const std::map<uint32_t, descriptor_req>& bindings,
                            const std::vector<uint32_t>& dynamic_offsets, const CMD_BUFFER_STATE* cb_node, const char* caller,
-                           std::string* error) const;
+                           std::string* error, struct DescriptorSetBindingDataCheckResults* check_results) const;
     bool ValidateDescriptorSetBindingData(const CMD_BUFFER_STATE* cb_node, const cvdescriptorset::DescriptorSet* descriptor_set,
                                           const std::vector<uint32_t>& dynamic_offsets, uint32_t binding, descriptor_req reqs,
-                                          const char* caller, std::string* error) const;
+                                          const char* caller, std::string* error,
+                                          struct DescriptorSetBindingDataCheckResults* check_results) const;
 
     // Validate contents of a CopyUpdate
     using DescriptorSet = cvdescriptorset::DescriptorSet;

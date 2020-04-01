@@ -17,6 +17,7 @@
  *
  * Author: Tobin Ehlis <tobine@google.com>
  *         John Zulauf <jzulauf@lunarg.com>
+ *         Jeremy Kniager <jeremyk@lunarg.com>
  */
 
 #include "chassis.h"
@@ -679,7 +680,8 @@ unsigned DescriptorRequirementsBitsFromFormat(VkFormat fmt) {
 // Return true if state is acceptable, or false and write an error message into error string
 bool CoreChecks::ValidateDrawState(const DescriptorSet *descriptor_set, const std::map<uint32_t, descriptor_req> &bindings,
                                    const std::vector<uint32_t> &dynamic_offsets, const CMD_BUFFER_STATE *cb_node,
-                                   const char *caller, std::string *error) const {
+                                   const char *caller, std::string *error,
+                                   struct DescriptorSetBindingDataCheckResults *check_results) const {
     for (auto binding_pair : bindings) {
         auto binding = binding_pair.first;
         DescriptorSetLayout::ConstBindingIterator binding_it(descriptor_set->GetLayout().get(), binding);
@@ -697,8 +699,8 @@ bool CoreChecks::ValidateDrawState(const DescriptorSet *descriptor_set, const st
             // or the view could have been destroyed
             continue;
         }
-        if (!ValidateDescriptorSetBindingData(cb_node, descriptor_set, dynamic_offsets, binding, binding_pair.second, caller,
-                                              error))
+        if (!ValidateDescriptorSetBindingData(cb_node, descriptor_set, dynamic_offsets, binding, binding_pair.second, caller, error,
+                                              check_results))
             return false;
     }
     return true;
@@ -706,7 +708,8 @@ bool CoreChecks::ValidateDrawState(const DescriptorSet *descriptor_set, const st
 
 bool CoreChecks::ValidateDescriptorSetBindingData(const CMD_BUFFER_STATE *cb_node, const DescriptorSet *descriptor_set,
                                                   const std::vector<uint32_t> &dynamic_offsets, uint32_t binding,
-                                                  descriptor_req reqs, const char *caller, std::string *error) const {
+                                                  descriptor_req reqs, const char *caller, std::string *error,
+                                                  struct DescriptorSetBindingDataCheckResults *check_results) const {
     using DescriptorClass = cvdescriptorset::DescriptorClass;
     using BufferDescriptor = cvdescriptorset::BufferDescriptor;
     using ImageDescriptor = cvdescriptorset::ImageDescriptor;
@@ -935,9 +938,11 @@ bool CoreChecks::ValidateDescriptorSetBindingData(const CMD_BUFFER_STATE *cb_nod
                     // Verify Sampler still valid
                     VkSampler sampler;
                     const SAMPLER_STATE *sampler_state;
+                    const IMAGE_VIEW_STATE *image_view_state = nullptr;
                     if (descriptor_class == DescriptorClass::ImageSampler) {
                         sampler = static_cast<const ImageSamplerDescriptor *>(descriptor)->GetSampler();
                         sampler_state = static_cast<const ImageSamplerDescriptor *>(descriptor)->GetSamplerState();
+                        image_view_state = static_cast<const ImageSamplerDescriptor *>(descriptor)->GetImageViewState();
                     } else {
                         sampler = static_cast<const SamplerDescriptor *>(descriptor)->GetSampler();
                         sampler_state = static_cast<const SamplerDescriptor *>(descriptor)->GetSamplerState();
@@ -956,6 +961,33 @@ bool CoreChecks::ValidateDescriptorSetBindingData(const CMD_BUFFER_STATE *cb_nod
                                       << report_data->FormatHandle(sampler_state->samplerConversion)
                                       << ") , then the sampler MUST also exists as an immutable sampler.";
                             *error = error_str.str();
+                        }
+                    }
+                    if (image_view_state) {
+                        VkFilter sampler_mag_filter = sampler_state->createInfo.magFilter;
+                        VkFilter sampler_min_filter = sampler_state->createInfo.minFilter;
+                        if ((sampler_mag_filter == VK_FILTER_LINEAR || sampler_min_filter == VK_FILTER_LINEAR) &&
+                            !(image_view_state->format_features & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
+                            check_results->linear_sampler = true;
+                            std::stringstream error_str;
+                            error_str << "sampler (" << sampler << ") in descriptor set (" << descriptor_set->GetSet()
+                                      << ") is set to use VK_FILTER_LINEAR, then image view's (" << image_view_state->image_view
+                                      << ") format (" << image_view_state->create_info.format
+                                      << ") MUST contain VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT in its format features.";
+                            *error = error_str.str();
+                            return false;
+                        }
+                        if ((sampler_mag_filter == VK_FILTER_CUBIC_EXT || sampler_min_filter == VK_FILTER_CUBIC_EXT) &&
+                            !(image_view_state->format_features & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_EXT)) {
+                            check_results->cubic_sampler = true;
+                            std::stringstream error_str;
+                            error_str
+                                << "sampler (" << sampler << ") in descriptor set (" << descriptor_set->GetSet()
+                                << ") is set to use VK_FILTER_CUBIC_EXT, then image view's (" << image_view_state->image_view
+                                << ") format (" << image_view_state->create_info.format
+                                << ") MUST contain VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_EXT in its format features.";
+                            *error = error_str.str();
+                            return false;
                         }
                     }
                 }

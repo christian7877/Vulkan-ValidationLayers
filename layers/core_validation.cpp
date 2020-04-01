@@ -33,6 +33,7 @@
  * Author: Tony Barbour <tony@LunarG.com>
  * Author: John Zulauf <jzulauf@lunarg.com>
  * Author: Shannon McPherson <shannon@lunarg.com>
+ * Author: Jeremy Kniager <jeremyk@lunarg.com>
  */
 
 #include <algorithm>
@@ -883,6 +884,8 @@ bool CoreChecks::ValidateCmdBufDrawState(const CMD_BUFFER_STATE *cb_node, CMD_TY
                                                     state.per_set[setIndex].validated_set_binding_req_map.end(),
                                                     binding_req_map.begin(), binding_req_map.end());
 
+                struct DescriptorSetBindingDataCheckResults check_results;
+
                 if (need_validate) {
                     bool success;
                     if (!descriptor_set_changed && reduced_map.IsManyDescriptors()) {
@@ -893,16 +896,22 @@ bool CoreChecks::ValidateCmdBufDrawState(const CMD_BUFFER_STATE *cb_node, CMD_TY
                                             state.per_set[setIndex].validated_set_binding_req_map.end(),
                                             std::inserter(delta_reqs, delta_reqs.begin()));
                         success = ValidateDrawState(descriptor_set, delta_reqs, state.per_set[setIndex].dynamicOffsets, cb_node,
-                                                    function, &err_str);
+                                                    function, &err_str, &check_results);
                     } else {
                         success = ValidateDrawState(descriptor_set, binding_req_map, state.per_set[setIndex].dynamicOffsets,
-                                                    cb_node, function, &err_str);
+                                                    cb_node, function, &err_str, &check_results);
                     }
                     if (!success) {
                         auto set = descriptor_set->GetSet();
-                        result |= LogError(set, kVUID_Core_DrawState_DescriptorSetNotUpdated,
-                                           "%s bound as set #%u encountered the following validation error at %s time: %s",
-                                           report_data->FormatHandle(set).c_str(), setIndex, function, err_str.c_str());
+                        if (check_results.linear_sampler) {
+                            result |= LogError(set, vuid.linear_sampler, "");
+                        } else if (check_results.cubic_sampler) {
+                            result |= LogError(set, vuid.cubic_sampler, "");
+                        } else {
+                            result |= LogError(set, kVUID_Core_DrawState_DescriptorSetNotUpdated,
+                                               "%s bound as set #%u encountered the following validation error at %s time: %s",
+                                               report_data->FormatHandle(set).c_str(), setIndex, function, err_str.c_str());
+                        }
                     }
                 }
             }
@@ -2356,11 +2365,12 @@ bool CoreChecks::ValidateCommandBuffersForSubmit(VkQueue queue, const VkSubmitIn
                 if (set_node) {
                     for (auto pipe : descriptorSet.second) {
                         for (auto binding : pipe.second) {
+                            struct DescriptorSetBindingDataCheckResults check_results;
                             std::string error;
                             std::vector<uint32_t> dynamicOffsets;
                             // dynamic data isn't allowed in UPDATE_AFTER_BIND, so dynamicOffsets is always empty.
                             if (!ValidateDescriptorSetBindingData(cb_node, set_node, dynamicOffsets, binding.first, binding.second,
-                                                                  "vkQueueSubmit()", &error)) {
+                                                                  "vkQueueSubmit()", &error, &check_results)) {
                                 skip |= LogError(descriptorSet.first, kVUID_Core_DrawState_DescriptorSetNotUpdated,
                                                  "%s bound the following validation error at %s time: %s",
                                                  report_data->FormatHandle(descriptorSet.first).c_str(), "vkQueueSubmit()",
