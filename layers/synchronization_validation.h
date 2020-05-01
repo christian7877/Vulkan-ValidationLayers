@@ -541,19 +541,30 @@ class SyncValidator : public ValidationStateTracker, public SyncStageAccess {
                                    VkImageLayout dstImageLayout, uint32_t regionCount, const VkImageBlit *pRegions,
                                    VkFilter filter);
 
-    bool DetectDescriptorSetHazard(const CMD_BUFFER_STATE &cmd, const cvdescriptorset::DescriptorSet &descriptor_set,
-                                   const std::map<uint32_t, descriptor_req> &bindings, const char *function) const;
+    bool DetectDescriptorSetHazard(const CMD_BUFFER_STATE &cmd, VkPipelineBindPoint pipelineBindPoint, const char *function) const;
+    void UpdateDescriptorSetAccessState(const CMD_BUFFER_STATE &cmd, CMD_TYPE command, VkPipelineBindPoint pipelineBindPoint);
 
-    bool DetectCommandBufferHazard(const CMD_BUFFER_STATE &cmd, VkPipelineBindPoint pipelineBindPoint, const char *function) const;
+    bool DetectVertexHazard(const CMD_BUFFER_STATE &cmd, uint32_t vertexCount, uint32_t firstVertex, const char *function) const;
+    void UpdateVertexAccessState(const CMD_BUFFER_STATE &cmd, CMD_TYPE command, uint32_t vertexCount, uint32_t firstVertex);
+
+    bool DetectVertexIndexHazard(const CMD_BUFFER_STATE &cmd, uint32_t indexCount, uint32_t firstIndex, const char *function) const;
+    void UpdateVertexIndexAccessState(const CMD_BUFFER_STATE &cmd, CMD_TYPE command, uint32_t indexCount, uint32_t firstIndex);
+
+
+    template <typename index_type>
+    void GetSortedIndices(const BUFFER_STATE &index_buf_state, const VkDeviceSize &index_size, uint32_t indexCount,
+                          uint32_t firstIndex, std::vector<index_type> &out_sorted_indices) const;
+
+    template <typename index_type>
+    bool GetIndicesAndDetectVertexHazard(const CMD_BUFFER_STATE &cmd, const BUFFER_STATE &index_buf_state,
+                                         const VkDeviceSize &index_size, uint32_t indexCount, uint32_t firstIndex,
+                                         const char *function) const;
+
+    template <typename index_type>
+    void GetIndicesAndUpdateVertexAccessState(const CMD_BUFFER_STATE &cmd, CMD_TYPE command, const BUFFER_STATE &index_buf_state,
+                                              const VkDeviceSize &index_size, uint32_t indexCount, uint32_t firstIndex);
 
     bool PreCallValidateCmdDispatch(VkCommandBuffer commandBuffer, uint32_t x, uint32_t y, uint32_t z) const;
-
-    void UpdateDescriptorSetAccessState(const CMD_BUFFER_STATE &cmd, CMD_TYPE command,
-                                        const cvdescriptorset::DescriptorSet &descriptor_set,
-                                        const std::map<uint32_t, descriptor_req> &bindings);
-
-    void UpdateCommandBufferAccessState(const CMD_BUFFER_STATE &cmd, CMD_TYPE command, VkPipelineBindPoint pipelineBindPoint);
-
     void PreCallRecordCmdDispatch(VkCommandBuffer commandBuffer, uint32_t x, uint32_t y, uint32_t z);
 
     bool PreCallValidateCmdDispatchIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset) const;

@@ -238,7 +238,7 @@ struct DEVICE_MEMORY_STATE : public BASE_NODE {
           p_driver_data(0),
           fake_base_address(fake_address){};
 
-    uint8_t *GetRawData(VkDeviceSize offset, VkDeviceSize size, VkPhysicalDeviceMemoryProperties &mem_props) {
+    uint8_t *GetRawData(VkDeviceSize offset, VkDeviceSize size, const VkPhysicalDeviceMemoryProperties &mem_props) const {
         if ((mem_props.memoryTypeCount <= alloc_info.memoryTypeIndex) ||
             ((mem_props.memoryTypes[alloc_info.memoryTypeIndex].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0) ||
             ((offset + size) > alloc_info.allocationSize))
