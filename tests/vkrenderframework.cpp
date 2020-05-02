@@ -42,14 +42,13 @@ typename C::iterator RemoveIf(C &container, F &&fn) {
 
 ErrorMonitor::ErrorMonitor() {
     test_platform_thread_create_mutex(&mutex_);
-    test_platform_thread_lock_mutex(&mutex_);
     Reset();
-    test_platform_thread_unlock_mutex(&mutex_);
 }
 
 ErrorMonitor::~ErrorMonitor() NOEXCEPT { test_platform_thread_delete_mutex(&mutex_); }
 
 void ErrorMonitor::Reset() {
+    test_platform_thread_lock_mutex(&mutex_);
     message_flags_ = 0;
     bailout_ = NULL;
     message_found_ = VK_FALSE;
@@ -58,6 +57,7 @@ void ErrorMonitor::Reset() {
     ignore_message_strings_.clear();
     allowed_message_strings_.clear();
     other_messages_.clear();
+    test_platform_thread_unlock_mutex(&mutex_);
 }
 
 void ErrorMonitor::SetDesiredFailureMsg(const VkFlags msgFlags, const string msg) { SetDesiredFailureMsg(msgFlags, msg.c_str()); }
@@ -77,9 +77,7 @@ void ErrorMonitor::SetAllowedFailureMsg(const char *const msg) {
 
 void ErrorMonitor::SetUnexpectedError(const char *const msg) {
     test_platform_thread_lock_mutex(&mutex_);
-
     ignore_message_strings_.emplace_back(msg);
-
     test_platform_thread_unlock_mutex(&mutex_);
 }
 
@@ -144,11 +142,17 @@ bool ErrorMonitor::AnyDesiredMsgFound() const { return message_found_; }
 bool ErrorMonitor::AllDesiredMsgsFound() const { return desired_message_strings_.empty(); }
 
 void ErrorMonitor::SetError(const char *const errorString) {
+    test_platform_thread_lock_mutex(&mutex_);
     message_found_ = true;
     failure_message_strings_.insert(errorString);
+    test_platform_thread_unlock_mutex(&mutex_);
 }
 
-void ErrorMonitor::SetBailout(bool *bailout) { bailout_ = bailout; }
+void ErrorMonitor::SetBailout(bool *bailout) {
+    test_platform_thread_lock_mutex(&mutex_);
+    bailout_ = bailout;
+    test_platform_thread_unlock_mutex(&mutex_);
+}
 
 void ErrorMonitor::DumpFailureMsgs() const {
     vector<string> otherMsgs = GetOtherFailureMsgs();
@@ -162,8 +166,10 @@ void ErrorMonitor::DumpFailureMsgs() const {
 
 void ErrorMonitor::ExpectSuccess(VkDebugReportFlagsEXT const message_flag_mask) {
     // Match ANY message matching specified type
-    SetDesiredFailureMsg(message_flag_mask, "");
-    message_flags_ = message_flag_mask;  // override mask handling in SetDesired...
+    test_platform_thread_lock_mutex(&mutex_);
+    desired_message_strings_.insert("");
+    message_flags_ = message_flag_mask;
+    test_platform_thread_unlock_mutex(&mutex_);
 }
 
 void ErrorMonitor::VerifyFound() {
