@@ -40,6 +40,7 @@
 #include <unordered_map>
 #include <utility>
 #include <cstring>
+#include <regex>
 
 #include "vk_typemap_helper.h"
 #include "vk_layer_config.h"
@@ -624,6 +625,12 @@ static inline int vasprintf(char **strp, char const *fmt, va_list ap) {
 }
 #endif
 
+#ifndef ANNOTATED_SPEC
+static const bool use_annotated_spec_url = false;
+#else   // ANNOTATED_SPEC
+static const bool use_annotated_spec_url = true;
+#endif  // ANNOTATED_SPEC
+
 static inline bool LogMsgLocked(const debug_report_data *debug_data, VkFlags msg_flags, const LogObjectList &objects,
                                 const std::string &vuid_text, char *err_msg) {
     std::string str_plus_spec_text(err_msg ? err_msg : "Allocation failure");
@@ -634,17 +641,42 @@ static inline bool LogMsgLocked(const debug_report_data *debug_data, VkFlags msg
         // this point in the error reporting path
         uint32_t num_vuids = sizeof(vuid_spec_text) / sizeof(vuid_spec_text_pair);
         const char *spec_text = nullptr;
+        const char *url_id = nullptr;
         for (uint32_t i = 0; i < num_vuids; i++) {
             if (0 == strcmp(vuid_text.c_str(), vuid_spec_text[i].vuid)) {
                 spec_text = vuid_spec_text[i].spec_text;
+                url_id = vuid_spec_text[i].url_id;
                 break;
             }
         }
 
         if (nullptr != spec_text) {
+            static const char *default_spec_url = " (https://github.com/KhronosGroup/Vulkan-Docs/search?q=_MAGIC_VUID_ID_)";
+            static const char *khronos_spec_url =
+                " (https://www.khronos.org/registry/vulkan/specs/_MAGIC_SPEC_ID_/html/vkspec.html#_MAGIC_VUID_ID_)";
+            static const char *annotated_spec_url =
+                " (https://vulkan.lunarg.com/doc/sdk/_MAGIC_VERSION_ID_.0/windows/_MAGIC_SPEC_ID_/vkspec.pdf#_MAGIC_VUID_ID_)";
             str_plus_spec_text += " The Vulkan spec states: ";
             str_plus_spec_text += spec_text;
+
+            // Construct and append the link to the appropriate version of the spec
+            if (0 == strcmp(url_id, "default")) {
+                str_plus_spec_text.append(default_spec_url);
+            } else if (!use_annotated_spec_url) {
+                str_plus_spec_text.append(khronos_spec_url);
+                str_plus_spec_text = std::regex_replace(str_plus_spec_text, std::regex("_MAGIC_SPEC_ID_"), url_id);
+            } else {
+                std::string major_version = std::to_string(VK_VERSION_MAJOR(VK_HEADER_VERSION_COMPLETE));
+                std::string minor_version = std::to_string(VK_VERSION_MINOR(VK_HEADER_VERSION_COMPLETE));
+                std::string patch_version = std::to_string(VK_VERSION_PATCH(VK_HEADER_VERSION_COMPLETE));
+                std::string header_version = major_version + "." + minor_version + "." + patch_version;
+                std::string spec_version = major_version + "." + minor_version + "-extensions";
+                str_plus_spec_text.append(annotated_spec_url);
+                str_plus_spec_text = std::regex_replace(str_plus_spec_text, std::regex("_MAGIC_VERSION_ID_"), header_version);
+                str_plus_spec_text = std::regex_replace(str_plus_spec_text, std::regex("_MAGIC_SPEC_ID_"), spec_version);
+            }
         }
+        str_plus_spec_text = std::regex_replace(str_plus_spec_text, std::regex("_MAGIC_VUID_ID_"), vuid_text.c_str());
     }
 
     bool result = debug_log_msg(debug_data, msg_flags, objects, "Validation", str_plus_spec_text.c_str(), vuid_text.c_str());
