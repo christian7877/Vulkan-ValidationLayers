@@ -78,6 +78,8 @@ endif()
 set(TARGET_NAMES
     VkLayer_khronos_validation)
 
+option(ANNOTATED_SPEC "Use Annotated Spec" OFF)
+
 if(BUILD_LAYERS)
     # Install the layer json files
     if(WIN32)
@@ -152,6 +154,10 @@ if(WIN32)
 else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wpointer-arith -Wno-unused-function -Wno-sign-compare")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wpointer-arith -Wno-unused-function -Wno-sign-compare")
+endif()
+
+if(ANNOTATED_SPEC)
+    add_definitions(-DANNOTATED_SPEC)
 endif()
 
 # Clang warns about unused const variables. Generated files may purposely contain unused consts, so silence this warning in Clang
